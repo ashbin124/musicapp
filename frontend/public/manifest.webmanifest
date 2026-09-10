@@ -1,0 +1,17 @@
+{
+  "name": "Wavebox",
+  "short_name": "Wavebox",
+  "description": "Personal music streaming for a curated private library.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#08090d",
+  "theme_color": "#10141d",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
