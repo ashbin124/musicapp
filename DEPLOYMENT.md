@@ -122,6 +122,8 @@ Use:
 - Build command: `./build.sh`
 - Start command: `gunicorn config.wsgi:application --chdir backend`
 
+Alternatively, use the repository `render.yaml` blueprint and fill every `sync: false` environment variable in Render.
+
 Set Render environment variables:
 
 ```text
