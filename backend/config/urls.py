@@ -12,7 +12,10 @@ urlpatterns = [
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-elif not getattr(settings, "USE_R2_STORAGE", False):
+elif not (
+    getattr(settings, "USE_R2_STORAGE", False)
+    or getattr(settings, "USE_SUPABASE_STORAGE", False)
+):
     # Demo fallback for deployments that have not connected durable object storage yet.
     urlpatterns += [
         re_path(r"^media/(?P<path>.*)$", serve, {"document_root": settings.MEDIA_ROOT})

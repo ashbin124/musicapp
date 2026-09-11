@@ -38,3 +38,11 @@ services:
         value: auto
       - key: R2_ADDRESSING_STYLE
         value: virtual
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_STORAGE_BUCKET
+        sync: false
+      - key: SUPABASE_STORAGE_PUBLIC_URL
+        sync: false

@@ -7,7 +7,7 @@ Target:
 - Frontend: Vercel free tier
 - Backend: Render free web service
 - Database: Supabase PostgreSQL free tier
-- Media/audio: Cloudflare R2
+- Media/audio: Supabase Storage for no-card personal use, or Cloudflare R2 when enabled
 
 ## Current Project Audit
 
@@ -28,8 +28,8 @@ Target:
 ## Production Readiness Notes
 
 - Render free services can sleep when inactive, so the first request after inactivity may be slow.
-- Render local filesystem is not durable for uploads, so production audio should use R2.
-- If R2 is not configured, the app can serve uploaded media from Render's local filesystem as a demo fallback, but uploads can disappear after redeploys/restarts.
+- Render local filesystem is not durable for uploads, so production audio should use Supabase Storage or R2.
+- If neither Supabase Storage nor R2 is configured, the app can serve uploaded media from Render's local filesystem as a demo fallback, but uploads can disappear after redeploys/restarts.
 - Supabase free tier limits storage/compute and may pause or restrict usage depending on current plan rules.
 - R2 audio must be reachable by the browser over HTTPS. Use an R2 public/custom domain and configure CORS.
 - iPhone PWA install works through Safari: Share -> Add to Home Screen.
@@ -62,7 +62,22 @@ git push
 
 Use the pooled connection string if Supabase recommends it for serverless/free-tier usage.
 
-## 3. Create Cloudflare R2 Bucket
+## 3. Create Supabase Storage Bucket
+
+For no-card personal use, create a public Supabase Storage bucket for audio.
+
+Required backend env vars:
+
+```text
+SUPABASE_URL=https://YOUR-PROJECT-REF.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=<Supabase service role key>
+SUPABASE_STORAGE_BUCKET=music
+SUPABASE_STORAGE_PUBLIC_URL=https://YOUR-PROJECT-REF.supabase.co/storage/v1/object/public/music
+```
+
+The service role key must stay only in Render environment variables. Do not put it in GitHub or frontend code.
+
+## 4. Optional: Create Cloudflare R2 Bucket
 
 1. In Cloudflare, create an R2 bucket for Wavebox audio.
 2. Create R2 API credentials with access to that bucket.
@@ -85,7 +100,7 @@ R2_REGION_NAME=auto
 R2_ADDRESSING_STYLE=virtual
 ```
 
-## 4. Configure R2 CORS
+## 5. Configure R2 CORS
 
 Allow the deployed Vercel frontend to read audio files.
 
@@ -112,7 +127,7 @@ http://127.0.0.1:5173
 
 Remove unnecessary origins for production.
 
-## 5. Create Render Backend
+## 6. Create Render Backend
 
 Create a new Render Web Service from the GitHub repository.
 
@@ -144,11 +159,15 @@ R2_ENDPOINT_URL=<R2 S3 endpoint URL>
 R2_PUBLIC_URL=<R2 public/custom HTTPS URL>
 R2_REGION_NAME=auto
 R2_ADDRESSING_STYLE=virtual
+SUPABASE_URL=<Supabase project URL>
+SUPABASE_SERVICE_ROLE_KEY=<Supabase service role key>
+SUPABASE_STORAGE_BUCKET=music
+SUPABASE_STORAGE_PUBLIC_URL=<Supabase public bucket URL>
 ```
 
 Render automatically provides `RENDER_EXTERNAL_HOSTNAME`; the Django settings include it in `ALLOWED_HOSTS`.
 
-## 6. Run Migrations on Render
+## 7. Run Migrations on Render
 
 The Render start command runs migrations before starting Gunicorn:
 
@@ -164,7 +183,7 @@ python backend/manage.py createsuperuser
 
 Use the admin account inside the Wavebox app to upload songs.
 
-## 7. Create Vercel Frontend
+## 8. Create Vercel Frontend
 
 Create a Vercel project from the same GitHub repository.
 
@@ -186,7 +205,7 @@ Deploy the frontend.
 
 The file `frontend/vercel.json` rewrites nested routes to `index.html` so React Router routes refresh correctly.
 
-## 8. Update Backend CORS After Vercel Deploy
+## 9. Update Backend CORS After Vercel Deploy
 
 After Vercel gives the final URL:
 
@@ -202,7 +221,7 @@ CSRF_TRUSTED_ORIGINS=https://YOUR-VERCEL-APP.vercel.app,https://<your-render-hos
 
 Do not set `CORS_ALLOW_ALL_ORIGINS=True` for production.
 
-## 9. Local Development Values
+## 10. Local Development Values
 
 Backend `backend/.env`:
 
@@ -224,7 +243,7 @@ Frontend `frontend/.env`:
 VITE_API_BASE_URL=http://127.0.0.1:8000/api
 ```
 
-## 10. Final Test Checklist
+## 11. Final Test Checklist
 
 Backend:
 

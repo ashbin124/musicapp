@@ -123,6 +123,14 @@ USE_R2_STORAGE = all(
         "R2_ENDPOINT_URL",
     ]
 )
+USE_SUPABASE_STORAGE = all(
+    os.getenv(name)
+    for name in [
+        "SUPABASE_URL",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "SUPABASE_STORAGE_BUCKET",
+    ]
+)
 
 if USE_R2_STORAGE:
     AWS_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID")
@@ -144,6 +152,18 @@ if USE_R2_STORAGE:
 
     STORAGES["default"] = {
         "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+    }
+elif USE_SUPABASE_STORAGE:
+    SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
+    SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    SUPABASE_STORAGE_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET")
+    SUPABASE_STORAGE_PUBLIC_URL = os.getenv(
+        "SUPABASE_STORAGE_PUBLIC_URL",
+        f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_STORAGE_BUCKET}",
+    ).strip().rstrip("/")
+    MEDIA_URL = f"{SUPABASE_STORAGE_PUBLIC_URL}/"
+    STORAGES["default"] = {
+        "BACKEND": "music.storage.SupabaseStorage",
     }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
