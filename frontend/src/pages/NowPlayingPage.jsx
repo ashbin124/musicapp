@@ -1,8 +1,8 @@
 import { Heart, ListMusic, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { api } from '../api/client'
 import Artwork from '../components/Artwork'
 import { usePlayer } from '../context/PlayerContext'
+import { setLiked as saveLiked } from '../services/localLibrary'
 import { formatDuration } from '../utils/format'
 
 export default function NowPlayingPage() {
@@ -17,13 +17,9 @@ export default function NowPlayingPage() {
 
   async function toggleLike() {
     if (!track) return
-    if (liked || track.liked) {
-      await api.delete(`/songs/${track.id}/unlike/`)
-      setLiked(false)
-    } else {
-      await api.post(`/songs/${track.id}/like/`)
-      setLiked(true)
-    }
+    const next = !(liked || track.liked)
+    await saveLiked(track.id, next)
+    setLiked(next)
   }
 
   return (

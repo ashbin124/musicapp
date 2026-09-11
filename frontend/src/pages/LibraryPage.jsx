@@ -1,11 +1,16 @@
 import { Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
-import { api, getErrorMessage } from '../api/client'
 import SongRow from '../components/SongRow'
 import { usePlayer } from '../context/PlayerContext'
-import { getDownloadedIds } from '../services/offlineAudio'
-import { collection } from '../utils/apiData'
+import {
+  createPlaylist as createLocalPlaylist,
+  LIBRARY_CHANGED_EVENT,
+  listAlbums,
+  listArtists,
+  listPlaylists,
+  listSongs,
+} from '../services/localLibrary'
 
 export default function LibraryPage() {
   const player = usePlayer()
@@ -15,36 +20,36 @@ export default function LibraryPage() {
   const [albums, setAlbums] = useState([])
   const [playlists, setPlaylists] = useState([])
   const [playlistName, setPlaylistName] = useState('')
-  const [downloadedIds, setDownloadedIds] = useState(new Set())
   const [error, setError] = useState('')
 
   async function load() {
     try {
-      const [songRes, artistRes, albumRes, playlistRes, ids] = await Promise.all([
-        api.get('/songs/'),
-        api.get('/artists/'),
-        api.get('/albums/'),
-        api.get('/playlists/'),
-        getDownloadedIds(),
+      const [songData, artistData, albumData, playlistData] = await Promise.all([
+        listSongs(),
+        listArtists(),
+        listAlbums(),
+        listPlaylists(),
       ])
-      setSongs(collection(songRes.data))
-      setArtists(collection(artistRes.data))
-      setAlbums(collection(albumRes.data))
-      setPlaylists(collection(playlistRes.data))
-      setDownloadedIds(ids)
+      setSongs(songData)
+      setArtists(artistData)
+      setAlbums(albumData)
+      setPlaylists(playlistData)
+      setError('')
     } catch (err) {
-      setError(getErrorMessage(err, 'Could not load library.'))
+      setError(err.message || 'Could not load library.')
     }
   }
 
   useEffect(() => {
     load()
+    window.addEventListener(LIBRARY_CHANGED_EVENT, load)
+    return () => window.removeEventListener(LIBRARY_CHANGED_EVENT, load)
   }, [])
 
   async function createPlaylist(event) {
     event.preventDefault()
     if (!playlistName.trim()) return
-    await api.post('/playlists/', { name: playlistName.trim() })
+    await createLocalPlaylist(playlistName.trim())
     setPlaylistName('')
     outlet?.refreshPlaylists?.()
     load()
@@ -87,8 +92,7 @@ export default function LibraryPage() {
               tracks={songs}
               context={{ type: 'library', label: 'Library' }}
               index={index}
-              downloaded={downloadedIds.has(song.id)}
-              onDownloadChange={load}
+              onLikeChange={load}
             />
           ))}
         </div>

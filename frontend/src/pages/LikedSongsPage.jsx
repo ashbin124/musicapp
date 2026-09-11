@@ -1,48 +1,33 @@
-import { Download, Shuffle } from 'lucide-react'
+import { Shuffle } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { api, getErrorMessage } from '../api/client'
 import SongRow from '../components/SongRow'
 import { usePlayer } from '../context/PlayerContext'
-import { downloadSong, getDownloadedIds } from '../services/offlineAudio'
-import { collection, shuffleCopy } from '../utils/apiData'
+import { LIBRARY_CHANGED_EVENT, listLikedSongs } from '../services/localLibrary'
+import { shuffleCopy } from '../utils/arrays'
 
 export default function LikedSongsPage() {
   const player = usePlayer()
   const [sort, setSort] = useState('recent')
   const [songs, setSongs] = useState([])
-  const [downloadedIds, setDownloadedIds] = useState(new Set())
   const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
 
   async function load() {
     try {
-      const [response, ids] = await Promise.all([
-        api.get('/liked-songs/', { params: { sort } }),
-        getDownloadedIds(),
-      ])
-      setSongs(collection(response.data).map((item) => item.song))
-      setDownloadedIds(ids)
+      setSongs(await listLikedSongs(sort))
+      setError('')
     } catch (err) {
-      setError(getErrorMessage(err, 'Could not load liked songs.'))
+      setError(err.message || 'Could not load liked songs.')
     }
   }
 
   useEffect(() => {
     load()
-  }, [sort])
-
-  async function downloadAll() {
-    setBusy(true)
-    setError('')
-    try {
-      for (const song of songs) await downloadSong(song)
-      await load()
-    } catch (err) {
-      setError(err.message || 'Download failed.')
-    } finally {
-      setBusy(false)
+    function onLibraryChanged() {
+      load()
     }
-  }
+    window.addEventListener(LIBRARY_CHANGED_EVENT, onLibraryChanged)
+    return () => window.removeEventListener(LIBRARY_CHANGED_EVENT, onLibraryChanged)
+  }, [sort])
 
   function playShuffle() {
     const shuffled = shuffleCopy(songs)
@@ -65,9 +50,6 @@ export default function LikedSongsPage() {
           <button className="text-button" type="button" onClick={playShuffle}>
             <Shuffle size={16} /> Shuffle
           </button>
-          <button className="primary-button" type="button" onClick={downloadAll} disabled={busy || !songs.length}>
-            <Download size={17} /> Download
-          </button>
         </div>
       </header>
       {error && <p className="form-error">{error}</p>}
@@ -79,8 +61,7 @@ export default function LikedSongsPage() {
             tracks={songs}
             context={{ type: 'liked', label: 'Liked Songs' }}
             index={index}
-            downloaded={downloadedIds.has(song.id)}
-            onDownloadChange={load}
+            onLikeChange={load}
           />
         ))}
       </div>

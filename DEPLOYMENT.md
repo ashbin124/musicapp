@@ -1,193 +1,49 @@
-# Wavebox Deployment Guide
+# Wavebox Frontend-Only Deployment
 
-This guide deploys the existing Wavebox app without rebuilding it.
+Wavebox now deploys as a React + Vite PWA on Vercel. The runtime app has no backend, no database, no login, and no cloud audio storage.
 
-Target:
-
-- Frontend: Vercel free tier
-- Backend: Render free web service
-- Database: Supabase PostgreSQL free tier
-- Media/audio: Supabase Storage for no-card personal use, or Cloudflare R2 when enabled
-
-## Current Project Audit
-
-- Frontend folder: `frontend/`
-- Backend folder: `backend/`
-- Django project module: `config`
-- Django settings file: `backend/config/settings.py`
-- Django WSGI module: `config.wsgi:application`
-- Local database config: `DATABASE_URL`, defaulting to local PostgreSQL database `musicapp`
-- Production database config: `DATABASE_URL` from Supabase
-- Local media storage: `backend/media/`, ignored by Git
-- Production media storage: Cloudflare R2 via `django-storages` when R2 env vars are set
-- CORS config: `CORS_ALLOWED_ORIGINS` env var
-- CSRF config: `CSRF_TRUSTED_ORIGINS` env var
-- Frontend API config: `VITE_API_BASE_URL`
-- PWA files: `frontend/public/manifest.webmanifest`, `frontend/public/sw.js`, `frontend/public/icon.svg`
-
-## Production Readiness Notes
-
-- Render free services can sleep when inactive, so the first request after inactivity may be slow.
-- Render local filesystem is not durable for uploads, so production audio should use Supabase Storage or R2.
-- If neither Supabase Storage nor R2 is configured, the app can serve uploaded media from Render's local filesystem as a demo fallback, but uploads can disappear after redeploys/restarts.
-- Supabase free tier limits storage/compute and may pause or restrict usage depending on current plan rules.
-- R2 audio must be reachable by the browser over HTTPS. Use an R2 public/custom domain and configure CORS.
-- iPhone PWA install works through Safari: Share -> Add to Home Screen.
-
-## 1. Push Project to GitHub
-
-Already completed locally:
-
-```bash
-git remote add origin https://github.com/ashbin124/musicapp.git
-git branch -M main
-git push -u origin main
-```
-
-For future changes:
-
-```bash
-git add .
-git commit -m "Describe change"
-git push
-```
-
-## 2. Create Supabase PostgreSQL
-
-1. Create a Supabase project.
-2. Open Project Settings -> Database.
-3. Copy the PostgreSQL connection string.
-4. Use it as `DATABASE_URL` on Render.
-5. Keep the password outside GitHub.
-
-Use the pooled connection string if Supabase recommends it for serverless/free-tier usage.
-
-## 3. Create Supabase Storage Bucket
-
-For no-card personal use, create a public Supabase Storage bucket for audio.
-
-Required backend env vars:
+## Architecture
 
 ```text
-SUPABASE_URL=https://YOUR-PROJECT-REF.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=<Supabase service role key>
-SUPABASE_STORAGE_BUCKET=music
-SUPABASE_STORAGE_PUBLIC_URL=https://YOUR-PROJECT-REF.supabase.co/storage/v1/object/public/music
+Vercel
+  -> React + Vite PWA
+  -> IndexedDB on each device
+  -> Local music library and app data
 ```
 
-The service role key must stay only in Render environment variables. Do not put it in GitHub or frontend code.
+Each device stores its own songs locally. There is no account system and no multi-device sync.
 
-## 4. Optional: Create Cloudflare R2 Bucket
+## Current Project Layout
 
-1. In Cloudflare, create an R2 bucket for Wavebox audio.
-2. Create R2 API credentials with access to that bucket.
-3. Copy:
-   - Access key ID
-   - Secret access key
-   - Bucket name
-   - S3 endpoint URL
-4. Configure a public R2 URL or custom domain for browser audio playback.
+- Frontend app: `frontend/`
+- Local storage layer: `frontend/src/db/localDb.js`
+- Local library service: `frontend/src/services/localLibrary.js`
+- Browser metadata reader: `frontend/src/services/audioMetadata.js`
+- PWA files: `frontend/public/manifest.webmanifest`, `frontend/public/sw.js`
+- Legacy backend kept for reference: `backend/`
 
-Required backend env vars:
-
-```text
-R2_ACCESS_KEY_ID
-R2_SECRET_ACCESS_KEY
-R2_BUCKET_NAME
-R2_ENDPOINT_URL
-R2_PUBLIC_URL
-R2_REGION_NAME=auto
-R2_ADDRESSING_STYLE=virtual
-```
-
-## 5. Configure R2 CORS
-
-Allow the deployed Vercel frontend to read audio files.
-
-Example CORS rule:
-
-```json
-[
-  {
-    "AllowedOrigins": ["https://YOUR-VERCEL-APP.vercel.app"],
-    "AllowedMethods": ["GET", "HEAD"],
-    "AllowedHeaders": ["*"],
-    "ExposeHeaders": ["ETag", "Content-Length", "Content-Type"],
-    "MaxAgeSeconds": 3600
-  }
-]
-```
-
-During testing, you may temporarily include local development origins:
-
-```text
-http://localhost:5173
-http://127.0.0.1:5173
-```
-
-Remove unnecessary origins for production.
-
-## 6. Create Render Backend
-
-Create a new Render Web Service from the GitHub repository.
-
-Use:
-
-- Root directory: leave blank / repository root
-- Runtime: Python
-- Build command: `./build.sh`
-- Start command: `python backend/manage.py migrate && gunicorn config.wsgi:application --chdir backend`
-
-Alternatively, use the repository `render.yaml` blueprint and fill every `sync: false` environment variable in Render.
-
-Set Render environment variables:
-
-```text
-DJANGO_SECRET_KEY=<long random secret>
-DJANGO_DEBUG=false
-DJANGO_ALLOWED_HOSTS=<your-render-host>.onrender.com
-DATABASE_URL=<Supabase PostgreSQL connection string>
-CORS_ALLOWED_ORIGINS=https://YOUR-VERCEL-APP.vercel.app
-CSRF_TRUSTED_ORIGINS=https://YOUR-VERCEL-APP.vercel.app,https://<your-render-host>.onrender.com
-JWT_ACCESS_MINUTES=30
-JWT_REFRESH_DAYS=14
-MUSIC_MAX_UPLOAD_SIZE_MB=80
-R2_ACCESS_KEY_ID=<Cloudflare R2 access key id>
-R2_SECRET_ACCESS_KEY=<Cloudflare R2 secret key>
-R2_BUCKET_NAME=<bucket name>
-R2_ENDPOINT_URL=<R2 S3 endpoint URL>
-R2_PUBLIC_URL=<R2 public/custom HTTPS URL>
-R2_REGION_NAME=auto
-R2_ADDRESSING_STYLE=virtual
-SUPABASE_URL=<Supabase project URL>
-SUPABASE_SERVICE_ROLE_KEY=<Supabase service role key>
-SUPABASE_STORAGE_BUCKET=music
-SUPABASE_STORAGE_PUBLIC_URL=<Supabase public bucket URL>
-```
-
-Render automatically provides `RENDER_EXTERNAL_HOSTNAME`; the Django settings include it in `ALLOWED_HOSTS`.
-
-## 7. Run Migrations on Render
-
-The Render start command runs migrations before starting Gunicorn:
+## Local Verification
 
 ```bash
-python backend/manage.py migrate
+cd frontend
+npm install
+npm run test
+npm run lint
+npm run build
 ```
 
-If you use a paid Render service with one-off jobs or shell access, you can run the command manually instead. Create an admin user after the backend is deployed:
+Run locally:
 
 ```bash
-python backend/manage.py createsuperuser
+cd frontend
+npm run dev
 ```
 
-Use the admin account inside the Wavebox app to upload songs.
+Open `http://localhost:5173/`, go to Add Music, import a test audio file, then verify playback, likes, playlists, search, Storage, and refresh behavior.
 
-## 8. Create Vercel Frontend
+## Vercel Setup
 
-Create a Vercel project from the same GitHub repository.
-
-Use:
+Create or update the Vercel project:
 
 - Root directory: `frontend`
 - Framework preset: Vite
@@ -195,110 +51,40 @@ Use:
 - Build command: `npm run build`
 - Output directory: `dist`
 
-Set Vercel environment variable:
+Environment variables:
 
 ```text
-VITE_API_BASE_URL=https://<your-render-host>.onrender.com/api
+None required
 ```
 
-Deploy the frontend.
+Do not set `VITE_API_BASE_URL`. The frontend does not call a backend API.
 
-The file `frontend/vercel.json` rewrites nested routes to `index.html` so React Router routes refresh correctly.
+## GitHub/Vercel Deploy
 
-## 9. Update Backend CORS After Vercel Deploy
-
-After Vercel gives the final URL:
-
-1. Copy the frontend URL.
-2. Update Render env vars:
-
-```text
-CORS_ALLOWED_ORIGINS=https://YOUR-VERCEL-APP.vercel.app
-CSRF_TRUSTED_ORIGINS=https://YOUR-VERCEL-APP.vercel.app,https://<your-render-host>.onrender.com
-```
-
-3. Redeploy the Render backend.
-
-Do not set `CORS_ALLOW_ALL_ORIGINS=True` for production.
-
-## 10. Local Development Values
-
-Backend `backend/.env`:
-
-```text
-DJANGO_SECRET_KEY=<local random secret>
-DJANGO_DEBUG=true
-DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
-DATABASE_URL=postgresql:///musicapp
-CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
-CSRF_TRUSTED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
-JWT_ACCESS_MINUTES=30
-JWT_REFRESH_DAYS=14
-MUSIC_MAX_UPLOAD_SIZE_MB=80
-```
-
-Frontend `frontend/.env`:
-
-```text
-VITE_API_BASE_URL=http://127.0.0.1:8000/api
-```
-
-## 11. Final Test Checklist
-
-Backend:
+After committing and pushing:
 
 ```bash
-python backend/manage.py check
-python backend/manage.py migrate
+git push origin main
 ```
 
-In the deployed app, verify:
+Vercel should build the frontend automatically from the `frontend` root. If needed, trigger Redeploy in the Vercel dashboard.
 
-- Registration
-- Login
-- Admin-only song upload
-- Song list/detail APIs
-- Likes
-- Playlists
-- Playlist ordering
-- Recently played
-- Continue listening
-- Django admin login
+## Phone Test
 
-Frontend:
+1. Open the Vercel URL on the phone.
+2. Confirm the app opens directly without login.
+3. Add/install the PWA to the Home Screen.
+4. Open from the Home Screen icon.
+5. Import 1 to 3 songs from the device.
+6. Play a song, like it, add it to a playlist, and search for it.
+7. Turn off network and confirm imported songs still play.
 
-- Login
-- Home page
-- Search
-- Library
-- Artist pages
-- Liked Songs
-- Playlists
-- Player controls
-- Queue
-- Shuffle/repeat
-- Mobile mini-player
-- Now Playing page
-- Offline downloads
-- Storage usage display
-- PWA install prompt or browser install option
+## Storage Limits
 
-Phone/iPhone:
+Imported audio is stored in IndexedDB. For 50 to 100 songs, storage depends on audio file size and the device/browser quota. Compressed MP3/M4A files are much safer than large WAV files.
 
-1. Open the Vercel URL in Safari.
-2. Login.
-3. Play one song.
-4. Create a playlist.
-5. Like a song.
-6. Download one song offline.
-7. Turn off network and play the downloaded song.
-8. Safari -> Share -> Add to Home Screen.
-9. Open from Home Screen and verify login/player behavior.
+iOS Safari can reclaim website storage when the device is low on space. There is no cloud backup in this architecture, so songs may need to be imported again on that device if browser data is cleared.
 
-## Useful Official Docs
+## Legacy Backend
 
-- Render Django deploy: https://render.com/docs/deploy-django
-- Vercel Vite deploy: https://vercel.com/docs/frameworks/frontend/vite
-- Vercel rewrites: https://vercel.com/docs/routing/rewrites
-- django-storages: https://django-storages.readthedocs.io/
-- Cloudflare R2 docs: https://developers.cloudflare.com/r2/
+Do not deploy Render, Supabase, PostgreSQL, Cloudflare R2, or the Django backend for the current app. The `backend/` directory remains in the repo only as a temporary backup/reference and can be removed after the frontend-only version is confirmed.

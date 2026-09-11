@@ -1,4 +1,4 @@
-const CACHE_NAME = 'wavebox-shell-v1'
+const CACHE_NAME = 'wavebox-shell-v2'
 const APP_SHELL = ['/', '/manifest.webmanifest', '/icon.svg']
 
 self.addEventListener('install', (event) => {
@@ -18,8 +18,6 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const request = event.request
   if (request.method !== 'GET') return
-  const url = new URL(request.url)
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/media/')) return
   event.respondWith(
     caches.match(request).then((cached) => {
       return (

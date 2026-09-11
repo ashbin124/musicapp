@@ -1,10 +1,10 @@
 import { Shuffle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { api, getErrorMessage } from '../api/client'
 import SongRow from '../components/SongRow'
 import { usePlayer } from '../context/PlayerContext'
-import { shuffleCopy } from '../utils/apiData'
+import { albumsByArtist, getArtist, songsByArtist } from '../services/localLibrary'
+import { shuffleCopy } from '../utils/arrays'
 
 export default function ArtistPage() {
   const { id } = useParams()
@@ -13,19 +13,24 @@ export default function ArtistPage() {
   const [songs, setSongs] = useState([])
   const [albums, setAlbums] = useState([])
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    Promise.all([api.get(`/artists/${id}/`), api.get(`/artists/${id}/songs/`), api.get(`/artists/${id}/albums/`)])
-      .then(([artistRes, songRes, albumRes]) => {
-        setArtist(artistRes.data)
-        setSongs(songRes.data)
-        setAlbums(albumRes.data)
+    setLoading(true)
+    setError('')
+    Promise.all([getArtist(id), songsByArtist(id), albumsByArtist(id)])
+      .then(([artistData, songData, albumData]) => {
+        setArtist(artistData)
+        setSongs(songData)
+        setAlbums(albumData)
       })
-      .catch((err) => setError(getErrorMessage(err, 'Could not load artist.')))
+      .catch((err) => setError(err.message || 'Could not load artist.'))
+      .finally(() => setLoading(false))
   }, [id])
 
   if (error) return <div className="page"><p className="form-error">{error}</p></div>
-  if (!artist) return <div className="page"><div className="loading-block">Loading</div></div>
+  if (loading) return <div className="page"><div className="loading-block">Loading</div></div>
+  if (!artist) return <div className="page"><div className="empty-state"><h2>Artist not found</h2></div></div>
 
   return (
     <div className="page">

@@ -15,8 +15,8 @@ import {
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api } from '../api/client'
 import { usePlayer } from '../context/PlayerContext'
+import { setLiked as saveLiked } from '../services/localLibrary'
 import { formatDuration } from '../utils/format'
 import Artwork from './Artwork'
 
@@ -32,13 +32,9 @@ export default function PlayerBar() {
 
   async function toggleLike() {
     if (!track) return
-    if (liked || track.liked) {
-      await api.delete(`/songs/${track.id}/unlike/`)
-      setLiked(false)
-    } else {
-      await api.post(`/songs/${track.id}/like/`)
-      setLiked(true)
-    }
+    const next = !(liked || track.liked)
+    await saveLiked(track.id, next)
+    setLiked(next)
   }
 
   const progressMax = Math.max(player.duration || track?.duration_seconds || 0, 1)

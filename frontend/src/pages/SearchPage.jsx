@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import { api, getErrorMessage } from '../api/client'
 import SongRow from '../components/SongRow'
+import { searchLibrary } from '../services/localLibrary'
 
 export default function SearchPage() {
   const [query, setQuery] = useState('')
@@ -12,12 +12,15 @@ export default function SearchPage() {
     const handle = setTimeout(() => {
       if (!query.trim()) {
         setResults({ songs: [], artists: [], albums: [], playlists: [] })
+        setError('')
         return
       }
-      api
-        .get('/search/', { params: { q: query } })
-        .then((response) => setResults(response.data))
-        .catch((err) => setError(getErrorMessage(err, 'Search failed.')))
+      searchLibrary(query)
+        .then((data) => {
+          setResults(data)
+          setError('')
+        })
+        .catch((err) => setError(err.message || 'Search failed.'))
     }, 250)
     return () => clearTimeout(handle)
   }, [query])

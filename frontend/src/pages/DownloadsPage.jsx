@@ -1,29 +1,43 @@
-import { Trash2 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { Database, Trash2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import SongRow from '../components/SongRow'
 import { usePlayer } from '../context/PlayerContext'
-import { clearDownloads, listDownloads, storageStats } from '../services/offlineAudio'
+import {
+  clearMusicLibrary,
+  deleteSong,
+  LIBRARY_CHANGED_EVENT,
+  listSongs,
+  storageStats,
+} from '../services/localLibrary'
 import { formatStorage } from '../utils/format'
 
 export default function DownloadsPage() {
   const player = usePlayer()
-  const [records, setRecords] = useState([])
-  const [stats, setStats] = useState({ count: 0, bytes: 0 })
-  const songs = useMemo(() => records.map((record) => record.song), [records])
+  const [songs, setSongs] = useState([])
+  const [stats, setStats] = useState({ count: 0, bytes: 0, usage: 0, quota: 0, persisted: false })
+  const [error, setError] = useState('')
 
   async function load() {
-    const [downloaded, currentStats] = await Promise.all([listDownloads(), storageStats()])
-    setRecords(downloaded)
+    const [songData, currentStats] = await Promise.all([listSongs(), storageStats()])
+    setSongs(songData)
     setStats(currentStats)
   }
 
   useEffect(() => {
-    load()
+    load().catch((err) => setError(err.message || 'Could not load storage.'))
+    window.addEventListener(LIBRARY_CHANGED_EVENT, load)
+    return () => window.removeEventListener(LIBRARY_CHANGED_EVENT, load)
   }, [])
 
   async function clearAll() {
-    if (!confirm('Clear all downloaded music?')) return
-    await clearDownloads()
+    if (!confirm('Clear all local music from this device?')) return
+    await clearMusicLibrary()
+    load()
+  }
+
+  async function removeSong(song) {
+    if (!confirm(`Delete "${song.title}" from this device?`)) return
+    await deleteSong(song.id)
     load()
   }
 
@@ -32,25 +46,33 @@ export default function DownloadsPage() {
       <header className="page-header">
         <div>
           <p className="eyebrow">Device storage</p>
-          <h1>Downloads</h1>
-          <p>Offline music: {stats.count} songs • {formatStorage(stats.bytes)}</p>
+          <h1>Storage</h1>
+          <p>Local music: {stats.count} songs • {formatStorage(stats.bytes)}</p>
         </div>
         <div className="header-actions">
-          <button className="primary-button" type="button" onClick={() => songs[0] && player.playContext(songs, songs[0].id, { type: 'downloads', label: 'Downloads' })}>Play</button>
-          <button className="text-button danger-text" type="button" onClick={clearAll} disabled={!records.length}><Trash2 size={16} /> Clear</button>
+          <button className="primary-button" type="button" onClick={() => songs[0] && player.playContext(songs, songs[0].id, { type: 'storage', label: 'Storage' })}>Play</button>
+          <button className="text-button danger-text" type="button" onClick={clearAll} disabled={!songs.length}><Trash2 size={16} /> Clear</button>
         </div>
       </header>
-      {!records.length && <div className="empty-state"><h2>No downloads</h2></div>}
+      {error && <p className="form-error">{error}</p>}
+      <section className="section">
+        <div className="storage-summary">
+          <Database size={20} />
+          <strong>{formatStorage(stats.usage || stats.bytes)} used{stats.quota ? ` of ${formatStorage(stats.quota)}` : ''}</strong>
+          <span>{stats.persisted ? 'Persistent browser storage granted' : 'Storage can be limited by iOS/browser settings'}</span>
+        </div>
+      </section>
+      {!songs.length && <div className="empty-state"><h2>No local music</h2><p>Use Add Music to import songs on this device.</p></div>}
       <div className="song-list">
-        {records.map((record, index) => (
+        {songs.map((song, index) => (
           <SongRow
-            key={record.id}
-            song={record.song}
+            key={song.id}
+            song={song}
             tracks={songs}
-            context={{ type: 'downloads', label: 'Downloads' }}
+            context={{ type: 'storage', label: 'Storage' }}
             index={index}
-            downloaded
-            onDownloadChange={load}
+            onRemove={() => removeSong(song)}
+            onLikeChange={load}
           />
         ))}
       </div>

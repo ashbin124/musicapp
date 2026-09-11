@@ -1,7 +1,7 @@
 {
   "name": "Wavebox",
   "short_name": "Wavebox",
-  "description": "Personal music streaming for a curated private library.",
+  "description": "Personal offline music library stored locally on each device.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#08090d",

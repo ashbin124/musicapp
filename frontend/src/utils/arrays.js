@@ -1,7 +1,3 @@
-export function collection(data) {
-  return data?.results || data || []
-}
-
 export function shuffleCopy(items) {
   const next = [...items]
   for (let index = next.length - 1; index > 0; index -= 1) {

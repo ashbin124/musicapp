@@ -1,33 +1,35 @@
 import {
   Disc3,
-  HardDriveDownload,
+  Database,
   Heart,
   Home,
   Library,
-  LogOut,
+  PlusCircle,
   Search,
-  Shield,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { api } from '../api/client'
+import { NavLink, Outlet } from 'react-router-dom'
 import { BRAND_NAME } from '../config'
-import { useAuth } from '../context/AuthContext'
+import {
+  LIBRARY_CHANGED_EVENT,
+  listPlaylists,
+  requestPersistentStorage,
+} from '../services/localLibrary'
 import PlayerBar from './PlayerBar'
 
 export default function Layout() {
-  const { user, logout } = useAuth()
-  const navigate = useNavigate()
   const [playlists, setPlaylists] = useState([])
 
-  useEffect(() => {
-    api.get('/playlists/').then((response) => setPlaylists(response.data.results || response.data))
-  }, [])
-
-  function signOut() {
-    logout()
-    navigate('/login')
+  async function refreshPlaylists() {
+    setPlaylists(await listPlaylists())
   }
+
+  useEffect(() => {
+    requestPersistentStorage()
+    refreshPlaylists()
+    window.addEventListener(LIBRARY_CHANGED_EVENT, refreshPlaylists)
+    return () => window.removeEventListener(LIBRARY_CHANGED_EVENT, refreshPlaylists)
+  }, [])
 
   return (
     <div className="app-shell">
@@ -41,8 +43,8 @@ export default function Layout() {
           <NavLink to="/search"><Search size={19} /> Search</NavLink>
           <NavLink to="/library"><Library size={19} /> Library</NavLink>
           <NavLink to="/liked"><Heart size={19} /> Liked Songs</NavLink>
-          <NavLink to="/downloads"><HardDriveDownload size={19} /> Downloads</NavLink>
-          {user?.is_staff && <NavLink to="/admin"><Shield size={19} /> Admin</NavLink>}
+          <NavLink to="/add-music"><PlusCircle size={19} /> Add Music</NavLink>
+          <NavLink to="/storage"><Database size={19} /> Storage</NavLink>
         </nav>
         <div className="sidebar__playlists">
           <span>Your Playlists</span>
@@ -52,13 +54,11 @@ export default function Layout() {
             </NavLink>
           ))}
         </div>
-        <button className="text-button sidebar__logout" type="button" onClick={signOut}>
-          <LogOut size={16} /> {user?.username}
-        </button>
+        <p className="sidebar__note">Local library on this device</p>
       </aside>
 
       <main className="main-content">
-        <Outlet context={{ refreshPlaylists: () => api.get('/playlists/').then((response) => setPlaylists(response.data.results || response.data)) }} />
+        <Outlet context={{ refreshPlaylists }} />
       </main>
 
       <nav className="mobile-nav">
@@ -66,6 +66,7 @@ export default function Layout() {
         <NavLink to="/search"><Search size={21} /><span>Search</span></NavLink>
         <NavLink to="/library"><Library size={21} /><span>Library</span></NavLink>
         <NavLink to="/liked"><Heart size={21} /><span>Liked</span></NavLink>
+        <NavLink to="/add-music"><PlusCircle size={21} /><span>Add</span></NavLink>
       </nav>
       <PlayerBar />
     </div>

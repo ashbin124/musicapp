@@ -7,7 +7,6 @@ import {
   useReducer,
   useRef,
 } from 'react'
-import { api } from '../api/client'
 import { BRAND_NAME } from '../config'
 import {
   addToQueue,
@@ -19,7 +18,12 @@ import {
   restoreOriginalOrder,
   shuffleUpcoming,
 } from '../player/queue'
-import { resolveAudioSource } from '../services/offlineAudio'
+import {
+  LIBRARY_CHANGED_EVENT,
+  recordRecentlyPlayed,
+  resolveAudioSource,
+  savePlaybackState,
+} from '../services/localLibrary'
 
 const PlayerContext = createContext(null)
 
@@ -94,6 +98,33 @@ function reducer(state, action) {
     }
     case 'CLEAR_QUEUE':
       return { ...state, queue: state.currentTrack ? [state.currentTrack] : [], currentIndex: 0 }
+    case 'REMOVE_TRACK': {
+      const queue = state.queue.filter((track) => track.id !== action.songId)
+      const currentRemoved = state.currentTrack?.id === action.songId
+      const currentIndex = currentRemoved
+        ? Math.min(state.currentIndex, Math.max(queue.length - 1, 0))
+        : queue.findIndex((track) => track.id === state.currentTrack?.id)
+      return {
+        ...state,
+        queue,
+        originalQueue: state.originalQueue.filter((track) => track.id !== action.songId),
+        currentIndex: Math.max(0, currentIndex),
+        currentTrack: queue[currentIndex] || null,
+        isPlaying: currentRemoved ? false : state.isPlaying,
+      }
+    }
+    case 'CLEAR_LIBRARY':
+      return {
+        ...state,
+        currentTrack: null,
+        queue: [],
+        originalQueue: [],
+        currentIndex: 0,
+        isPlaying: false,
+        progress: 0,
+        duration: 0,
+        startPosition: 0,
+      }
     case 'TOGGLE_SHUFFLE': {
       const shuffle = !state.shuffle
       if (!state.currentTrack) return { ...state, shuffle }
@@ -119,15 +150,20 @@ export function PlayerProvider({ children }) {
   const sourceRef = useRef(null)
   const lastTickRef = useRef(0)
 
+  const clearAudioSource = useCallback(() => {
+    if (sourceRef.current?.revoke) URL.revokeObjectURL(sourceRef.current.url)
+    sourceRef.current = null
+  }, [])
+
   useEffect(() => {
     stateRef.current = state
   }, [state])
 
-  const savePlaybackState = useCallback(async () => {
+  const persistPlaybackState = useCallback(async () => {
     const current = stateRef.current
     if (!current.currentTrack) return
     try {
-      await api.put('/playback-state/', {
+      await savePlaybackState({
         song_id: current.currentTrack.id,
         position_seconds: Math.floor(audioRef.current.currentTime || current.progress || 0),
         context_type: current.playbackContext?.type || '',
@@ -139,15 +175,12 @@ export function PlayerProvider({ children }) {
     }
   }, [])
 
-  const recordRecentlyPlayed = useCallback(async (song, position = 0) => {
+  const persistRecentlyPlayed = useCallback(async (song, position = 0) => {
     if (!song) return
     try {
-      await api.post('/recently-played/', {
-        song_id: song.id,
-        position_seconds: Math.floor(position),
-      })
+      await recordRecentlyPlayed(song.id, position)
     } catch {
-      // Recent history is best effort while offline or during server restarts.
+      // Recent history is best effort and should never interrupt listening.
     }
   }, [])
 
@@ -156,11 +189,11 @@ export function PlayerProvider({ children }) {
     const index = getNextIndex(current)
     if (index < 0) {
       dispatch({ type: 'STOP_AT_END' })
-      savePlaybackState()
+      persistPlaybackState()
       return
     }
     dispatch({ type: 'NEXT_INDEX', index })
-  }, [savePlaybackState])
+  }, [persistPlaybackState])
 
   const goPrevious = useCallback(() => {
     const audio = audioRef.current
@@ -193,7 +226,7 @@ export function PlayerProvider({ children }) {
       })
     }
     const onEnded = () => {
-      recordRecentlyPlayed(stateRef.current.currentTrack, audio.duration || 0)
+      persistRecentlyPlayed(stateRef.current.currentTrack, audio.duration || 0)
       if (stateRef.current.repeatMode === 'one') {
         audio.currentTime = 0
         dispatch({ type: 'SET_PROGRESS', progress: 0 })
@@ -202,7 +235,7 @@ export function PlayerProvider({ children }) {
       }
       goNext()
     }
-    const onPause = () => savePlaybackState()
+    const onPause = () => persistPlaybackState()
 
     audio.addEventListener('timeupdate', onTime)
     audio.addEventListener('loadedmetadata', onLoaded)
@@ -214,7 +247,7 @@ export function PlayerProvider({ children }) {
       audio.removeEventListener('ended', onEnded)
       audio.removeEventListener('pause', onPause)
     }
-  }, [goNext, recordRecentlyPlayed, savePlaybackState])
+  }, [goNext, persistRecentlyPlayed, persistPlaybackState])
 
   useEffect(() => {
     const audio = audioRef.current
@@ -237,7 +270,7 @@ export function PlayerProvider({ children }) {
 
     let cancelled = false
     async function loadSource() {
-      if (sourceRef.current?.revoke) URL.revokeObjectURL(sourceRef.current.url)
+      clearAudioSource()
       try {
         const source = await resolveAudioSource(track)
         if (cancelled) {
@@ -251,7 +284,7 @@ export function PlayerProvider({ children }) {
           type: 'SET_DURATION',
           duration: track.duration_seconds || audio.duration || 0,
         })
-        recordRecentlyPlayed(track, state.startPosition || 0)
+        persistRecentlyPlayed(track, state.startPosition || 0)
         if (state.isPlaying) {
           await audio.play()
         }
@@ -263,11 +296,23 @@ export function PlayerProvider({ children }) {
     return () => {
       cancelled = true
     }
-  }, [state.currentTrack?.id])
+  }, [clearAudioSource, state.currentTrack?.id])
+
+  useEffect(() => {
+    return () => {
+      clearAudioSource()
+    }
+  }, [clearAudioSource])
 
   useEffect(() => {
     const audio = audioRef.current
-    if (!state.currentTrack) return
+    if (!state.currentTrack) {
+      audio.pause()
+      audio.removeAttribute('src')
+      audio.load()
+      clearAudioSource()
+      return
+    }
     if (state.isPlaying) {
       audio.play().catch((error) => {
         dispatch({ type: 'SET_ERROR', error: error.message || 'Playback was blocked.' })
@@ -275,19 +320,32 @@ export function PlayerProvider({ children }) {
     } else {
       audio.pause()
     }
-  }, [state.isPlaying, state.currentTrack])
+  }, [clearAudioSource, state.isPlaying, state.currentTrack])
 
   useEffect(() => {
     const interval = window.setInterval(() => {
-      if (stateRef.current.isPlaying) savePlaybackState()
+      if (stateRef.current.isPlaying) persistPlaybackState()
     }, 30000)
-    const beforeUnload = () => savePlaybackState()
+    const beforeUnload = () => persistPlaybackState()
     window.addEventListener('beforeunload', beforeUnload)
     return () => {
       clearInterval(interval)
       window.removeEventListener('beforeunload', beforeUnload)
     }
-  }, [savePlaybackState])
+  }, [persistPlaybackState])
+
+  useEffect(() => {
+    function onLibraryChanged(event) {
+      if (event.detail?.type === 'song-deleted') {
+        dispatch({ type: 'REMOVE_TRACK', songId: event.detail.songId })
+      }
+      if (event.detail?.type === 'library-cleared') {
+        dispatch({ type: 'CLEAR_LIBRARY' })
+      }
+    }
+    window.addEventListener(LIBRARY_CHANGED_EVENT, onLibraryChanged)
+    return () => window.removeEventListener(LIBRARY_CHANGED_EVENT, onLibraryChanged)
+  }, [])
 
   useEffect(() => {
     if (!('mediaSession' in navigator) || !state.currentTrack) return

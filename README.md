@@ -1,115 +1,57 @@
 # Wavebox
 
-Wavebox is a full-stack personal music streaming app for a small administrator-uploaded library. It uses Django REST Framework, JWT auth, PostgreSQL, React, Vite, a persistent browser audio player, IndexedDB offline downloads, Media Session API hooks, and a PWA app shell.
+Wavebox is now a frontend-only React + Vite PWA for a personal music library stored on each device.
+
+The app does not require login, Django, PostgreSQL, Supabase, Render, R2, or any cloud music storage at runtime. Imported audio files, song metadata, playlists, liked songs, recently played songs, and playback state are stored in the browser with IndexedDB.
+
+The old `backend/` folder is still kept in the repository for reference, but the production app uses only `frontend/`.
 
 ## Stack
 
-- Backend: Python, Django, Django REST Framework, Simple JWT, Mutagen metadata extraction
-- Database: PostgreSQL
-- Frontend: React, Vite, React Router, Axios, responsive CSS
-- Offline/PWA: service worker app shell, manifest, IndexedDB audio downloads
+- Frontend: React, Vite, React Router, lucide-react
+- Storage: IndexedDB for audio blobs and library data
+- Settings: localStorage only for small player preferences like volume, shuffle, and repeat
+- PWA: Vite static build, web manifest, service worker app shell
 
-## 1. Backend Setup
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp backend/.env.example backend/.env
-```
-
-Fill `backend/.env` with local values for `DJANGO_SECRET_KEY`, `DJANGO_DEBUG`, `DJANGO_ALLOWED_HOSTS`, `DATABASE_URL`, CORS, and CSRF origins. Do not commit real `.env` files.
-
-Start PostgreSQL with Docker:
-
-```bash
-docker compose up -d postgres
-```
-
-Or create the database yourself:
-
-```bash
-createdb musicapp
-```
-
-Run migrations and create an admin:
-
-```bash
-cd backend
-python manage.py migrate
-python manage.py createsuperuser
-python manage.py runserver
-```
-
-The backend API runs at `http://localhost:8000/api/`.
-
-## 2. Frontend Setup
+## Run Locally
 
 ```bash
 cd frontend
 npm install
-cp .env.example .env
 npm run dev
 ```
 
-Set `VITE_API_BASE_URL=http://127.0.0.1:8000/api` in `frontend/.env` for local development.
+Open `http://localhost:5173/`.
 
-The Vite app runs at `http://localhost:5173/`.
+No backend server is needed.
 
-## 3. First Song Upload
+## Use The App
 
-1. Create a superuser with `python manage.py createsuperuser`.
-2. Login to Wavebox with that admin account.
-3. Open `Admin`.
-4. Select an MP3, M4A, AAC, or WAV file.
-5. Enter the song title and artist manually.
-6. Optionally enter a release year, then upload.
+1. Open Wavebox.
+2. Go to Add Music.
+3. Choose one or more MP3, M4A, AAC, or WAV files from the device.
+4. For one song, enter the song name and artist manually.
+5. For multiple songs, Wavebox reads embedded metadata when available and falls back to filenames.
+6. Use Library, Search, Artists, Albums, Playlists, Liked Songs, Queue, and Now Playing normally.
 
-Normal users can browse and listen but cannot upload, edit, replace, or delete music.
+Each phone, tablet, or browser profile has its own separate local library. Songs do not sync between devices.
 
-## 4. Registration and Login Test
+## Local Storage Model
 
-Start both servers, then:
+IndexedDB stores:
 
-1. Open `http://localhost:5173/register`.
-2. Create a normal user account.
-3. Login and confirm the Home, Search, Library, Liked Songs, Playlists, player, and Downloads pages are available.
-4. Confirm `Admin` is not shown for a normal user.
+- audio `File`/`Blob` objects
+- song title, artist, duration, embedded album data, year, artwork when available
+- playlists and playlist order
+- liked songs
+- recently played songs
+- continue listening / playback position
 
-JWT access and refresh tokens are stored locally in the browser and refreshed automatically.
+LocalStorage stores only lightweight player settings.
 
-## 5. Offline Playback Test
+Browser storage can still be limited by the OS. On iPhone, keeping the app installed and using Safari's Add to Home Screen flow gives the best chance of durable storage, but iOS can reclaim website data if storage is low.
 
-1. Login and upload at least one song as admin.
-2. Open Library or Liked Songs.
-3. Press the download icon on a song, playlist, or liked collection.
-4. Open `Downloads` and confirm the song count and storage estimate.
-5. Disable the network in browser devtools.
-6. Play a downloaded song from Downloads.
-7. Try playing a non-downloaded song while offline; the UI should fail gracefully.
-
-Offline audio is device-specific and stored in IndexedDB.
-
-## 6. PWA Build
-
-```bash
-cd frontend
-npm run build
-npm run preview
-```
-
-The production build registers `public/sw.js`, exposes `manifest.webmanifest`, and can be installed by supported browsers. Background playback depends on browser and OS behavior; the player is structured so the app can later be wrapped with Capacitor if stronger mobile background playback is needed.
-
-## 7. Tests
-
-Backend:
-
-```bash
-cd backend
-USE_SQLITE=true python manage.py test
-```
-
-Frontend:
+## Build And Test
 
 ```bash
 cd frontend
@@ -118,36 +60,34 @@ npm run lint
 npm run build
 ```
 
-Backend tests cover authentication, admin upload permissions, likes, playlist CRUD, and playlist ordering. Frontend tests cover queue, shuffle, repeat, and play-next logic.
+The production build output is `frontend/dist/`.
 
-## 8. API Overview
+## Deploy To Vercel
 
-- `POST /api/auth/register/`
-- `POST /api/auth/login/`
-- `POST /api/auth/refresh/`
-- `GET /api/auth/me/`
-- `GET /api/home/`
-- `GET /api/search/?q=...`
-- `GET/POST /api/songs/`
-- `POST /api/songs/metadata/`
-- `POST /api/songs/bulk_upload/`
-- `POST /api/songs/{id}/like/`
-- `DELETE /api/songs/{id}/unlike/`
-- `GET/POST /api/playlists/`
-- `POST /api/playlists/{id}/add_song/`
-- `DELETE /api/playlists/{id}/entries/{entry_id}/`
-- `POST /api/playlists/{id}/reorder/`
-- `GET/PUT /api/playback-state/`
-- `GET/POST /api/recently-played/`
+Create a Vercel project with:
 
-## 9. Deployment Notes
+- Root directory: `frontend`
+- Framework preset: Vite
+- Install command: `npm install`
+- Build command: `npm run build`
+- Output directory: `dist`
 
-The project is intentionally split for separate deployment:
+No Vercel environment variables are required.
 
-- Deploy `backend/` as a Django API service.
-- Deploy PostgreSQL as a managed database or container.
-- Serve media files from durable object storage in production.
-- Deploy `frontend/` as static Vite output.
-- Set production `DJANGO_SECRET_KEY`, `DATABASE_URL`, `ALLOWED_HOSTS`, CORS, CSRF, and media storage settings through environment variables.
+The `frontend/vercel.json` rewrite sends nested React Router paths back to `index.html`.
 
-Do not commit `.env`, uploaded media, virtual environments, `node_modules`, or build output.
+## PWA Notes
+
+On iPhone:
+
+1. Open the Vercel URL in Safari.
+2. Tap Share.
+3. Tap Add to Home Screen.
+4. Open Wavebox from the Home Screen icon.
+5. Import songs on that same device.
+
+Offline playback works for imported songs stored on that device. Browser background audio behavior depends on iOS/browser rules.
+
+## Legacy Backend
+
+The `backend/`, `requirements.txt`, `build.sh`, and backend environment examples are legacy code from the previous full-stack version. They are not needed for the current frontend-only app and can be removed later after the local-only version is fully verified.

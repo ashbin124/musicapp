@@ -1,11 +1,19 @@
-import { Download, Shuffle, Trash2 } from 'lucide-react'
+import { Shuffle, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useOutletContext, useParams } from 'react-router-dom'
-import { api, getErrorMessage } from '../api/client'
 import SongRow from '../components/SongRow'
 import { usePlayer } from '../context/PlayerContext'
-import { downloadSong, getDownloadedIds } from '../services/offlineAudio'
-import { collection, shuffleCopy } from '../utils/apiData'
+import {
+  addSongToPlaylist,
+  deletePlaylist as deleteLocalPlaylist,
+  getPlaylist,
+  LIBRARY_CHANGED_EVENT,
+  listSongs,
+  removePlaylistEntry,
+  renamePlaylist,
+  reorderPlaylist,
+} from '../services/localLibrary'
+import { shuffleCopy } from '../utils/arrays'
 
 export default function PlaylistPage() {
   const { id } = useParams()
@@ -15,46 +23,50 @@ export default function PlaylistPage() {
   const [playlist, setPlaylist] = useState(null)
   const [allSongs, setAllSongs] = useState([])
   const [selectedSong, setSelectedSong] = useState('')
-  const [downloadedIds, setDownloadedIds] = useState(new Set())
   const [dragIndex, setDragIndex] = useState(null)
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
   const songs = useMemo(() => playlist?.entries.map((entry) => entry.song) || [], [playlist])
 
   async function load() {
+    setLoading(true)
     try {
-      const [playlistRes, songsRes, ids] = await Promise.all([
-        api.get(`/playlists/${id}/`),
-        api.get('/songs/'),
-        getDownloadedIds(),
+      const [playlistData, songData] = await Promise.all([
+        getPlaylist(id),
+        listSongs(),
       ])
-      setPlaylist(playlistRes.data)
-      setAllSongs(collection(songsRes.data))
-      setDownloadedIds(ids)
+      setPlaylist(playlistData)
+      setAllSongs(songData)
+      setError('')
     } catch (err) {
-      setError(getErrorMessage(err, 'Could not load playlist.'))
+      setError(err.message || 'Could not load playlist.')
+    } finally {
+      setLoading(false)
     }
   }
 
   useEffect(() => {
     load()
+    window.addEventListener(LIBRARY_CHANGED_EVENT, load)
+    return () => window.removeEventListener(LIBRARY_CHANGED_EVENT, load)
   }, [id])
 
   async function rename(name) {
-    const response = await api.patch(`/playlists/${id}/`, { name })
-    setPlaylist((current) => ({ ...current, ...response.data }))
+    const updated = await renamePlaylist(id, name)
+    setPlaylist((current) => ({ ...current, ...updated }))
     outlet?.refreshPlaylists?.()
   }
 
   async function addSong(event) {
     event.preventDefault()
     if (!selectedSong) return
-    await api.post(`/playlists/${id}/add_song/`, { song_id: Number(selectedSong) })
+    await addSongToPlaylist(id, selectedSong)
     setSelectedSong('')
     load()
   }
 
   async function removeEntry(entryId) {
-    await api.delete(`/playlists/${id}/entries/${entryId}/`)
+    await removePlaylistEntry(id, entryId)
     load()
   }
 
@@ -64,27 +76,18 @@ export default function PlaylistPage() {
     const [moved] = entries.splice(from, 1)
     entries.splice(to, 0, moved)
     setPlaylist({ ...playlist, entries })
-    await api.post(`/playlists/${id}/reorder/`, { entry_ids: entries.map((entry) => entry.id) })
+    await reorderPlaylist(id, entries.map((entry) => entry.id))
   }
 
   async function deletePlaylist() {
     if (!confirm(`Delete ${playlist.name}?`)) return
-    await api.delete(`/playlists/${id}/`)
+    await deleteLocalPlaylist(id)
     outlet?.refreshPlaylists?.()
     navigate('/library')
   }
 
-  async function downloadPlaylist() {
-    setError('')
-    try {
-      for (const song of songs) await downloadSong(song)
-      await load()
-    } catch (err) {
-      setError(err.message || 'Download failed.')
-    }
-  }
-
-  if (!playlist) return <div className="page"><div className="loading-block">Loading</div></div>
+  if (loading) return <div className="page"><div className="loading-block">Loading</div></div>
+  if (!playlist) return <div className="page"><div className="empty-state"><h2>Playlist not found</h2></div></div>
 
   return (
     <div className="page">
@@ -108,9 +111,6 @@ export default function PlaylistPage() {
             if (shuffled[0]) player.playContext(shuffled, shuffled[0].id, { type: 'playlist', id, label: playlist.name })
           }}>
             <Shuffle size={16} /> Shuffle
-          </button>
-          <button className="text-button" type="button" onClick={downloadPlaylist}>
-            <Download size={16} /> Download
           </button>
           <button className="icon-button danger" type="button" onClick={deletePlaylist} title="Delete playlist">
             <Trash2 size={18} />
@@ -137,8 +137,7 @@ export default function PlaylistPage() {
             tracks={songs}
             context={{ type: 'playlist', id, label: playlist.name }}
             index={index}
-            downloaded={downloadedIds.has(entry.song.id)}
-            onDownloadChange={load}
+            onLikeChange={load}
             onRemove={() => removeEntry(entry.id)}
             draggable
             onDragStart={() => setDragIndex(index)}

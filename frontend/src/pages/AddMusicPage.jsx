@@ -1,10 +1,10 @@
 import {
   CheckCircle2,
+  Database,
   Disc3,
   FileAudio,
   Loader2,
   Pencil,
-  Plus,
   RefreshCw,
   Search,
   Trash2,
@@ -13,31 +13,37 @@ import {
   X,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { api, getErrorMessage } from '../api/client'
-import { collection } from '../utils/apiData'
+import {
+  clearMusicLibrary,
+  deleteSong as deleteLocalSong,
+  importSongs,
+  listArtists,
+  listSongs,
+  storageStats,
+  updateSong,
+} from '../services/localLibrary'
 import { formatDuration, formatStorage } from '../utils/format'
 
 const emptySongForm = {
   title: '',
   artist_name: '',
-  release_year: '',
 }
 
 const tabs = [
-  { id: 'upload', label: 'Upload Song', icon: Upload },
+  { id: 'import', label: 'Add Music', icon: Upload },
   { id: 'songs', label: 'Songs', icon: Disc3 },
-  { id: 'catalog', label: 'Artists', icon: Users },
+  { id: 'storage', label: 'Storage', icon: Database },
 ]
 
-export default function AdminPage() {
-  const [activeTab, setActiveTab] = useState('upload')
+export default function AddMusicPage() {
+  const [activeTab, setActiveTab] = useState('import')
   const [songs, setSongs] = useState([])
   const [artists, setArtists] = useState([])
-  const [songFile, setSongFile] = useState(null)
+  const [stats, setStats] = useState({ count: 0, bytes: 0, usage: 0, quota: 0, persisted: false })
+  const [songFiles, setSongFiles] = useState([])
   const [songForm, setSongForm] = useState(emptySongForm)
   const [editingSong, setEditingSong] = useState(null)
   const [replaceFile, setReplaceFile] = useState(null)
-  const [artistName, setArtistName] = useState('')
   const [songQuery, setSongQuery] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -57,15 +63,17 @@ export default function AdminPage() {
   async function load() {
     setLoading(true)
     try {
-      const [songRes, artistRes] = await Promise.all([
-        api.get('/songs/'),
-        api.get('/artists/'),
+      const [songData, artistData, currentStats] = await Promise.all([
+        listSongs(),
+        listArtists(),
+        storageStats(),
       ])
-      setSongs(collection(songRes.data))
-      setArtists(collection(artistRes.data))
+      setSongs(songData)
+      setArtists(artistData)
+      setStats(currentStats)
       setError('')
     } catch (err) {
-      setError(getErrorMessage(err, 'Could not load admin data.'))
+      setError(err.message || 'Could not load local library.')
     } finally {
       setLoading(false)
     }
@@ -85,24 +93,23 @@ export default function AdminPage() {
     setMessage('')
   }
 
-  async function uploadSong(event) {
+  async function importSelectedSongs(event) {
     event.preventDefault()
-    if (!songFile) return
+    if (!songFiles.length) return
+    if (songFiles.length === 1 && (!songForm.title.trim() || !songForm.artist_name.trim())) {
+      setError('Song title and artist are required for single-song import.')
+      return
+    }
     setBusy(true)
     setError('')
     try {
-      const data = new FormData()
-      data.append('audio_file', songFile)
-      Object.entries(songForm).forEach(([key, value]) => {
-        if (value) data.append(key, value)
-      })
-      await api.post('/songs/', data)
-      setSongFile(null)
+      const imported = await importSongs(songFiles, songForm)
+      setSongFiles([])
       setSongForm(emptySongForm)
-      notify('Song uploaded.')
+      notify(`${imported.length} song${imported.length === 1 ? '' : 's'} imported.`)
       await load()
     } catch (err) {
-      setError(getErrorMessage(err, 'Upload failed.'))
+      setError(err.message || 'Import failed.')
     } finally {
       setBusy(false)
     }
@@ -114,58 +121,42 @@ export default function AdminPage() {
     setBusy(true)
     setError('')
     try {
-      const data = new FormData()
-      data.append('title', editingSong.title)
-      data.append('artist_name', editingSong.artist_name)
-      if (editingSong.release_year) data.append('release_year', editingSong.release_year)
-      if (replaceFile) data.append('audio_file', replaceFile)
-      await api.patch(`/songs/${editingSong.id}/`, data)
+      await updateSong(editingSong.id, editingSong, replaceFile)
       setEditingSong(null)
       setReplaceFile(null)
       notify('Song saved.')
       await load()
     } catch (err) {
-      setError(getErrorMessage(err, 'Could not save song.'))
+      setError(err.message || 'Could not save song.')
     } finally {
       setBusy(false)
     }
   }
 
   async function deleteSong(song) {
-    if (!confirm(`Delete song "${song.title}"?`)) return
+    if (!confirm(`Delete song "${song.title}" from this device?`)) return
     setError('')
     try {
-      await api.delete(`/songs/${song.id}/`)
+      await deleteLocalSong(song.id)
       notify('Song deleted.')
       await load()
     } catch (err) {
-      setError(getErrorMessage(err, 'Could not delete song.'))
+      setError(err.message || 'Could not delete song.')
     }
   }
 
-  async function createArtist(event) {
-    event.preventDefault()
-    if (!artistName.trim()) return
+  async function clearLibrary() {
+    if (!confirm('Clear all local music from this device? Playlists will remain but their songs will be removed.')) return
+    setBusy(true)
     setError('')
     try {
-      await api.post('/artists/', { name: artistName.trim() })
-      setArtistName('')
-      notify('Artist created.')
+      await clearMusicLibrary()
+      notify('Local music library cleared.')
       await load()
     } catch (err) {
-      setError(getErrorMessage(err, 'Could not create artist.'))
-    }
-  }
-
-  async function deleteArtist(artist) {
-    if (!confirm(`Delete artist "${artist.name}"?`)) return
-    setError('')
-    try {
-      await api.delete(`/artists/${artist.id}/`)
-      notify('Artist deleted.')
-      await load()
-    } catch (err) {
-      setError(getErrorMessage(err, 'Delete that artist after deleting or editing their songs.'))
+      setError(err.message || 'Could not clear local music.')
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -176,7 +167,6 @@ export default function AdminPage() {
       id: song.id,
       title: song.title,
       artist_name: song.artist?.name || '',
-      release_year: song.release_year || '',
     })
   }
 
@@ -184,9 +174,9 @@ export default function AdminPage() {
     <div className="page admin-page">
       <header className="admin-hero">
         <div>
-          <p className="eyebrow">Protected library controls</p>
-          <h1>Music Admin</h1>
-          <p>Add song title and artist manually, manage tracks, and delete artists.</p>
+          <p className="eyebrow">Local device library</p>
+          <h1>Add Music</h1>
+          <p>Import songs from this device. Music is stored locally and works offline.</p>
         </div>
         <button className="text-button" type="button" onClick={load} disabled={loading}>
           {loading ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />} Refresh
@@ -196,6 +186,7 @@ export default function AdminPage() {
       <section className="admin-stats">
         <StatCard icon={Disc3} label="Songs" value={songs.length} />
         <StatCard icon={Users} label="Artists" value={artists.length} />
+        <StatCard icon={Database} label="Local Music" value={formatStorage(stats.bytes)} />
       </section>
 
       {(message || error) && (
@@ -208,7 +199,7 @@ export default function AdminPage() {
         </div>
       )}
 
-      <nav className="admin-tabs" aria-label="Admin sections">
+      <nav className="admin-tabs" aria-label="Library sections">
         {tabs.map((tab) => {
           const Icon = tab.icon
           return (
@@ -224,28 +215,35 @@ export default function AdminPage() {
         })}
       </nav>
 
-      {activeTab === 'upload' && (
+      {activeTab === 'import' && (
         <section className="admin-grid admin-grid--single">
-          <form className="admin-panel admin-panel--primary" onSubmit={uploadSong}>
-            <PanelTitle icon={Upload} title="Upload Song" detail="Choose an audio file and enter every visible detail manually." />
+          <form className="admin-panel admin-panel--primary" onSubmit={importSelectedSongs}>
+            <PanelTitle icon={Upload} title="Import Songs" detail="Choose one or more audio files from this device." />
             <FilePicker
-              label="Choose audio file"
-              file={songFile}
-              onChange={(files) => setSongFile(files?.[0] || null)}
+              label="Choose audio files"
+              files={songFiles}
+              multiple
+              onChange={(files) => setSongFiles(files)}
             />
-            <SongMetadataFields form={songForm} setForm={setSongForm} />
-            <button className="primary-button" type="submit" disabled={busy || !songFile}>
-              {busy ? <Loader2 className="spin" size={17} /> : <Upload size={17} />} Save Song
+            {songFiles.length <= 1 && <SongMetadataFields form={songForm} setForm={setSongForm} />}
+            {songFiles.length > 1 && (
+              <div className="admin-help-list">
+                <span>Multiple files will use embedded metadata or filename fallback.</span>
+                <span>Edit titles and artists after import if needed.</span>
+              </div>
+            )}
+            <button className="primary-button" type="submit" disabled={busy || !songFiles.length}>
+              {busy ? <Loader2 className="spin" size={17} /> : <Upload size={17} />} Import
             </button>
           </form>
 
           <aside className="admin-panel admin-help-panel">
-            <PanelTitle icon={FileAudio} title="Manual Entry" detail="This screen does not auto-fill song title, artist, or year." />
+            <PanelTitle icon={FileAudio} title="Offline by Default" detail="Imported music never uploads to a server." />
             <div className="admin-help-list">
-              <span>Required: audio file, song title, artist</span>
-              <span>Optional: release year</span>
-              <span>Duration is still read from the audio file for the player timer.</span>
-              <span>Embedded artwork may still be used when the file has cover art.</span>
+              <span>Supported: MP3, M4A, AAC, WAV when the browser can play them.</span>
+              <span>Duration is read locally from the audio file.</span>
+              <span>Embedded tags and artwork are used automatically when available.</span>
+              <span>Each phone keeps a separate library.</span>
             </div>
           </aside>
         </section>
@@ -254,7 +252,7 @@ export default function AdminPage() {
       {activeTab === 'songs' && (
         <section className="admin-songs-layout">
           <div className="admin-panel">
-            <PanelTitle icon={Disc3} title="Manage Songs" detail="Edit metadata, replace files, or delete tracks." />
+            <PanelTitle icon={Disc3} title="Manage Songs" detail="Edit metadata or delete songs stored on this device." />
             <div className="admin-search">
               <Search size={18} />
               <input
@@ -295,7 +293,7 @@ export default function AdminPage() {
                 <SongMetadataFields form={editingSong} setForm={setEditingSong} />
                 <FilePicker
                   label="Replace audio file"
-                  file={replaceFile}
+                  files={replaceFile ? [replaceFile] : []}
                   optional
                   onChange={(files) => setReplaceFile(files?.[0] || null)}
                 />
@@ -318,22 +316,22 @@ export default function AdminPage() {
         </section>
       )}
 
-      {activeTab === 'catalog' && (
-        <section className="admin-grid admin-grid--artists">
-          <form className="admin-panel" onSubmit={createArtist}>
-            <PanelTitle icon={Users} title="Artists" detail="Create or delete artist records." />
-            <div className="inline-form">
-              <input value={artistName} onChange={(event) => setArtistName(event.target.value)} placeholder="Artist name" />
-              <button className="primary-button" type="submit"><Plus size={17} /> Create</button>
+      {activeTab === 'storage' && (
+        <section className="admin-grid admin-grid--single">
+          <div className="admin-panel">
+            <PanelTitle icon={Database} title="Storage" detail="Manage music stored in this browser on this device." />
+            <div className="storage-summary">
+              <strong>{stats.count} songs • {formatStorage(stats.bytes)}</strong>
+              <span>
+                Browser usage: {formatStorage(stats.usage || stats.bytes)}
+                {stats.quota ? ` of ${formatStorage(stats.quota)}` : ''}
+              </span>
+              <span>{stats.persisted ? 'Persistent storage granted' : 'Browser may reclaim storage if the device is low on space'}</span>
             </div>
-            <CatalogList
-              items={artists}
-              getTitle={(artist) => artist.name}
-              getSubtitle={(artist) => `${artist.song_count || 0} songs`}
-              onDelete={deleteArtist}
-              emptyLabel="No artists yet"
-            />
-          </form>
+            <button className="primary-button danger-button" type="button" onClick={clearLibrary} disabled={busy || !songs.length}>
+              <Trash2 size={17} /> Clear Local Music
+            </button>
+          </div>
         </section>
       )}
     </div>
@@ -364,18 +362,27 @@ function PanelTitle({ icon: Icon, title, detail }) {
   )
 }
 
-function FilePicker({ label, file, optional = false, onChange }) {
+function FilePicker({ label, files = [], optional = false, multiple = false, onChange }) {
+  const detail = files.length
+    ? files.length === 1
+      ? `${files[0].name} • ${formatStorage(files[0].size)}`
+      : `${files.length} files selected`
+    : optional
+      ? 'Optional replacement file'
+      : 'MP3, M4A, AAC, or WAV'
+
   return (
     <label className="file-picker">
       <input
         type="file"
         accept=".mp3,.m4a,.aac,.wav,audio/*"
+        multiple={multiple}
         onChange={(event) => onChange?.(Array.from(event.target.files || []))}
       />
       <span className="file-picker__icon"><FileAudio size={22} /></span>
       <span>
-        <strong>{file ? file.name : label}</strong>
-        <small>{file ? formatStorage(file.size) : optional ? 'Optional replacement file' : 'MP3, M4A, AAC, or WAV'}</small>
+        <strong>{label}</strong>
+        <small>{detail}</small>
       </span>
     </label>
   )
@@ -396,32 +403,6 @@ function SongMetadataFields({ form, setForm }) {
         Artist
         <input value={form.artist_name || ''} onChange={(event) => update('artist_name', event.target.value)} placeholder="Artist" required />
       </label>
-      <label>
-        Year
-        <input value={form.release_year || ''} onChange={(event) => update('release_year', event.target.value)} placeholder="Optional" inputMode="numeric" />
-      </label>
-    </div>
-  )
-}
-
-function CatalogList({ items, getTitle, getSubtitle, onDelete, emptyLabel }) {
-  if (!items.length) {
-    return <div className="admin-empty">{emptyLabel}</div>
-  }
-
-  return (
-    <div className="catalog-list">
-      {items.map((item) => (
-        <div className="catalog-item" key={item.id}>
-          <div>
-            <strong>{getTitle(item)}</strong>
-            <span>{getSubtitle(item)}</span>
-          </div>
-          <button className="icon-button danger" type="button" onClick={() => onDelete(item)} title="Delete">
-            <Trash2 size={16} />
-          </button>
-        </div>
-      ))}
     </div>
   )
 }

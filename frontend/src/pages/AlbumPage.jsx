@@ -1,12 +1,12 @@
 import { Shuffle } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { api, getErrorMessage } from '../api/client'
 import Artwork from '../components/Artwork'
 import SongRow from '../components/SongRow'
 import { usePlayer } from '../context/PlayerContext'
+import { getAlbum, songsByAlbum } from '../services/localLibrary'
 import { formatDuration } from '../utils/format'
-import { shuffleCopy } from '../utils/apiData'
+import { shuffleCopy } from '../utils/arrays'
 
 export default function AlbumPage() {
   const { id } = useParams()
@@ -14,19 +14,24 @@ export default function AlbumPage() {
   const [album, setAlbum] = useState(null)
   const [tracks, setTracks] = useState([])
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
   const totalDuration = useMemo(() => tracks.reduce((total, song) => total + (song.duration_seconds || 0), 0), [tracks])
 
   useEffect(() => {
-    Promise.all([api.get(`/albums/${id}/`), api.get(`/albums/${id}/tracks/`)])
-      .then(([albumRes, trackRes]) => {
-        setAlbum(albumRes.data)
-        setTracks(trackRes.data)
+    setLoading(true)
+    setError('')
+    Promise.all([getAlbum(id), songsByAlbum(id)])
+      .then(([albumData, trackData]) => {
+        setAlbum(albumData)
+        setTracks(trackData)
       })
-      .catch((err) => setError(getErrorMessage(err, 'Could not load album.')))
+      .catch((err) => setError(err.message || 'Could not load album.'))
+      .finally(() => setLoading(false))
   }, [id])
 
   if (error) return <div className="page"><p className="form-error">{error}</p></div>
-  if (!album) return <div className="page"><div className="loading-block">Loading</div></div>
+  if (loading) return <div className="page"><div className="loading-block">Loading</div></div>
+  if (!album) return <div className="page"><div className="empty-state"><h2>Album not found</h2></div></div>
 
   return (
     <div className="page">

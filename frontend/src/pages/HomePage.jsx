@@ -1,11 +1,11 @@
 import { Play, RotateCcw } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api, getErrorMessage } from '../api/client'
 import Section from '../components/Section'
 import { usePlayer } from '../context/PlayerContext'
+import { getHomeData, LIBRARY_CHANGED_EVENT } from '../services/localLibrary'
 import { formatDuration } from '../utils/format'
-import { shuffleCopy } from '../utils/apiData'
+import { shuffleCopy } from '../utils/arrays'
 
 export default function HomePage() {
   const player = usePlayer()
@@ -13,10 +13,24 @@ export default function HomePage() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    api
-      .get('/home/')
-      .then((response) => setHome(response.data))
-      .catch((err) => setError(getErrorMessage(err, 'Could not load home.')))
+    let active = true
+    async function load() {
+      try {
+        const data = await getHomeData()
+        if (active) {
+          setHome(data)
+          setError('')
+        }
+      } catch (err) {
+        if (active) setError(err.message || 'Could not load home.')
+      }
+    }
+    load()
+    window.addEventListener(LIBRARY_CHANGED_EVENT, load)
+    return () => {
+      active = false
+      window.removeEventListener(LIBRARY_CHANGED_EVENT, load)
+    }
   }, [])
 
   if (error) return <div className="page"><p className="form-error">{error}</p></div>
@@ -105,6 +119,7 @@ export default function HomePage() {
         <div className="empty-state">
           <Play size={32} />
           <h2>No music yet</h2>
+          <p>Import songs on this device from Add Music.</p>
         </div>
       )}
     </div>

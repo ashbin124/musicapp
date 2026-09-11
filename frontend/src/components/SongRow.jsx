@@ -1,5 +1,4 @@
 import {
-  Download,
   Heart,
   ListPlus,
   Pause,
@@ -7,10 +6,9 @@ import {
   Plus,
   Trash2,
 } from 'lucide-react'
-import { useState } from 'react'
-import { api, getErrorMessage } from '../api/client'
+import { useEffect, useState } from 'react'
 import { usePlayer } from '../context/PlayerContext'
-import { downloadSong, removeDownload } from '../services/offlineAudio'
+import { setLiked as saveLiked } from '../services/localLibrary'
 import { formatDuration } from '../utils/format'
 import Artwork from './Artwork'
 
@@ -19,9 +17,8 @@ export default function SongRow({
   tracks = [song],
   context,
   index,
-  onDownloadChange,
+  onLikeChange,
   onRemove,
-  downloaded = false,
   draggable = false,
   onDragStart,
   onDragOver,
@@ -33,36 +30,19 @@ export default function SongRow({
   const [error, setError] = useState('')
   const isCurrent = player.currentTrack?.id === song.id
 
+  useEffect(() => {
+    setLiked(Boolean(song.liked))
+  }, [song.id, song.liked])
+
   async function toggleLike() {
     setError('')
     setBusy(true)
     try {
-      if (liked) {
-        await api.delete(`/songs/${song.id}/unlike/`)
-        setLiked(false)
-      } else {
-        await api.post(`/songs/${song.id}/like/`)
-        setLiked(true)
-      }
+      await saveLiked(song.id, !liked)
+      setLiked(!liked)
+      onLikeChange?.()
     } catch (err) {
-      setError(getErrorMessage(err, 'Could not update liked songs.'))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function toggleDownload() {
-    setError('')
-    setBusy(true)
-    try {
-      if (downloaded) {
-        await removeDownload(song.id)
-      } else {
-        await downloadSong(song)
-      }
-      onDownloadChange?.()
-    } catch (err) {
-      setError(err.message || 'Download failed.')
+      setError(err.message || 'Could not update liked songs.')
     } finally {
       setBusy(false)
     }
@@ -114,15 +94,7 @@ export default function SongRow({
         <button className="icon-button" type="button" onClick={() => player.addToQueue(song)} title="Add to queue">
           <Plus size={18} />
         </button>
-        <button
-          className={`icon-button ${downloaded ? 'is-downloaded' : ''}`}
-          type="button"
-          onClick={toggleDownload}
-          disabled={busy || !song.audio_url}
-          title={downloaded ? 'Remove download' : 'Download'}
-        >
-          <Download size={18} />
-        </button>
+        <span className="offline-chip">Offline</span>
         {onRemove && (
           <button className="icon-button danger" type="button" onClick={onRemove} title="Remove">
             <Trash2 size={18} />
