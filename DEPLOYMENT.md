@@ -120,7 +120,7 @@ Use:
 - Root directory: leave blank / repository root
 - Runtime: Python
 - Build command: `./build.sh`
-- Start command: `gunicorn config.wsgi:application --chdir backend`
+- Start command: `python backend/manage.py migrate && gunicorn config.wsgi:application --chdir backend`
 
 Alternatively, use the repository `render.yaml` blueprint and fill every `sync: false` environment variable in Render.
 
@@ -149,13 +149,13 @@ Render automatically provides `RENDER_EXTERNAL_HOSTNAME`; the Django settings in
 
 ## 6. Run Migrations on Render
 
-After the backend deploys, open Render Shell and run:
+The Render start command runs migrations before starting Gunicorn:
 
 ```bash
 python backend/manage.py migrate
 ```
 
-Create an admin user:
+If you use a paid Render service with one-off jobs or shell access, you can run the command manually instead. Create an admin user after the backend is deployed:
 
 ```bash
 python backend/manage.py createsuperuser

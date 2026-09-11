@@ -32,6 +32,7 @@ frontend/.env.*
 tmp/
 .vscode/
 .idea/
+.wrangler/
 credentials.json
 *.pem
 *.key

@@ -4,7 +4,7 @@ services:
     runtime: python
     plan: free
     buildCommand: ./build.sh
-    startCommand: gunicorn config.wsgi:application --chdir backend
+    startCommand: python backend/manage.py migrate && gunicorn config.wsgi:application --chdir backend
     envVars:
       - key: DJANGO_SECRET_KEY
         sync: false
