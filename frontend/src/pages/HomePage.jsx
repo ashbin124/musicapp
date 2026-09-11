@@ -1,24 +1,23 @@
-import { Play, RotateCcw } from 'lucide-react'
+import { Music2, Play, Shuffle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import Section from '../components/Section'
+import SongRow from '../components/SongRow'
 import { usePlayer } from '../context/PlayerContext'
-import { getHomeData, LIBRARY_CHANGED_EVENT } from '../services/localLibrary'
-import { formatDuration } from '../utils/format'
+import { LIBRARY_CHANGED_EVENT, listSongs } from '../services/localLibrary'
 import { shuffleCopy } from '../utils/arrays'
 
 export default function HomePage() {
   const player = usePlayer()
-  const [home, setHome] = useState(null)
+  const [songs, setSongs] = useState(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
     let active = true
     async function load() {
       try {
-        const data = await getHomeData()
+        const data = await listSongs()
         if (active) {
-          setHome(data)
+          setSongs(data)
           setError('')
         }
       } catch (err) {
@@ -34,92 +33,54 @@ export default function HomePage() {
   }, [])
 
   if (error) return <div className="page"><p className="form-error">{error}</p></div>
-  if (!home) return <div className="page"><div className="loading-block">Loading</div></div>
+  if (!songs) return <div className="page"><div className="loading-block">Loading</div></div>
 
-  const recentSongs = home.recently_played.map((item) => item.song)
-  const likedSongs = home.liked_songs.map((item) => item.song)
-  const resume = home.continue_listening
+  function playAll() {
+    if (songs[0]) player.playContext(songs, songs[0].id, { type: 'home', label: 'Music' })
+  }
+
+  function shuffleAll() {
+    const shuffled = shuffleCopy(songs)
+    if (shuffled[0]) player.playContext(shuffled, shuffled[0].id, { type: 'home', label: 'Music' })
+  }
 
   return (
     <div className="page">
       <header className="page-header">
         <div>
-          <p className="eyebrow">Personal library</p>
-          <h1>Home</h1>
+          <p className="eyebrow">Local library</p>
+          <h1>Music</h1>
+          <p>{songs.length} song{songs.length === 1 ? '' : 's'} on this device</p>
+        </div>
+        <div className="header-actions">
+          <button className="primary-button" type="button" onClick={playAll} disabled={!songs.length}>
+            <Play size={17} /> Play
+          </button>
+          <button className="text-button" type="button" onClick={shuffleAll} disabled={!songs.length}>
+            <Shuffle size={17} /> Shuffle
+          </button>
         </div>
       </header>
 
-      {resume?.song && (
-        <section className="resume-panel">
-          <div>
-            <span>Continue Listening</span>
-            <h2>{resume.song.title}</h2>
-            <p>
-              {resume.song.artist?.name} • {formatDuration(resume.position_seconds)}
-            </p>
-          </div>
-          <button
-            className="primary-button"
-            type="button"
-            onClick={() =>
-              player.playContext([resume.song], resume.song.id, {
-                type: resume.context_type || 'song',
-                id: resume.context_id,
-                label: resume.context_label || resume.song.title,
-              }, resume.position_seconds)
-            }
-          >
-            <RotateCcw size={18} /> Resume
-          </button>
-        </section>
-      )}
-
-      <Section
-        title="Recently Played"
-        songs={recentSongs}
-        context={{ type: 'recent', label: 'Recently Played' }}
-        onPlayAll={() => recentSongs[0] && player.playContext(recentSongs, recentSongs[0].id, { type: 'recent', label: 'Recently Played' })}
-      />
-      <Section
-        title="Liked Songs"
-        songs={likedSongs}
-        context={{ type: 'liked', label: 'Liked Songs' }}
-        onPlayAll={() => likedSongs[0] && player.playContext(likedSongs, likedSongs[0].id, { type: 'liked', label: 'Liked Songs' })}
-        onShuffle={() => {
-          const shuffled = shuffleCopy(likedSongs)
-          if (shuffled[0]) player.playContext(shuffled, shuffled[0].id, { type: 'liked', label: 'Liked Songs' })
-        }}
-      />
-      <section className="section">
-        <div className="section__header">
-          <h2>Your Playlists</h2>
-        </div>
-        <div className="entity-grid">
-          {home.playlists.map((playlist) => (
-            <Link className="entity-card" to={`/playlists/${playlist.id}`} key={playlist.id}>
-              <strong>{playlist.name}</strong>
-              <span>{playlist.track_count} tracks</span>
-            </Link>
+      {songs.length ? (
+        <div className="song-list">
+          {songs.map((song, index) => (
+            <SongRow
+              key={song.id}
+              song={song}
+              tracks={songs}
+              context={{ type: 'home', label: 'Music' }}
+              index={index}
+              onLikeChange={() => listSongs().then(setSongs)}
+            />
           ))}
         </div>
-      </section>
-      <Section
-        title="Recently Added"
-        songs={home.recently_added}
-        context={{ type: 'recently-added', label: 'Recently Added' }}
-        onPlayAll={() => home.recently_added[0] && player.playContext(home.recently_added, home.recently_added[0].id, { type: 'recently-added', label: 'Recently Added' })}
-      />
-      <Section
-        title="Suggestions"
-        songs={home.suggestions}
-        context={{ type: 'suggestions', label: 'Suggestions' }}
-        onPlayAll={() => home.suggestions[0] && player.playContext(home.suggestions, home.suggestions[0].id, { type: 'suggestions', label: 'Suggestions' })}
-      />
-      {!home.recently_added.length && (
+      ) : (
         <div className="empty-state">
-          <Play size={32} />
+          <Music2 size={32} />
           <h2>No music yet</h2>
           <p>Import songs on this device from Add Music.</p>
+          <Link className="primary-button" to="/add-music">Add Music</Link>
         </div>
       )}
     </div>
