@@ -4,8 +4,6 @@ Wavebox is now a frontend-only React + Vite PWA for a personal music library sto
 
 The app does not require login, Django, PostgreSQL, Supabase, Render, R2, or any cloud music storage at runtime. Imported audio files, song metadata, playlists, liked songs, recently played songs, and playback state are stored in the browser with IndexedDB.
 
-The old `backend/` folder is still kept in the repository for reference, but the production app uses only `frontend/`.
-
 ## Stack
 
 - Frontend: React, Vite, React Router, lucide-react
@@ -87,7 +85,3 @@ On iPhone:
 5. Import songs on that same device.
 
 Offline playback works for imported songs stored on that device. Browser background audio behavior depends on iOS/browser rules.
-
-## Legacy Backend
-
-The `backend/`, `requirements.txt`, `build.sh`, and backend environment examples are legacy code from the previous full-stack version. They are not needed for the current frontend-only app and can be removed later after the local-only version is fully verified.

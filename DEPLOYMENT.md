@@ -20,7 +20,6 @@ Each device stores its own songs locally. There is no account system and no mult
 - Local library service: `frontend/src/services/localLibrary.js`
 - Browser metadata reader: `frontend/src/services/audioMetadata.js`
 - PWA files: `frontend/public/manifest.webmanifest`, `frontend/public/sw.js`
-- Legacy backend kept for reference: `backend/`
 
 ## Local Verification
 
@@ -84,7 +83,3 @@ Vercel should build the frontend automatically from the `frontend` root. If need
 Imported audio is stored in IndexedDB. For 50 to 100 songs, storage depends on audio file size and the device/browser quota. Compressed MP3/M4A files are much safer than large WAV files.
 
 iOS Safari can reclaim website storage when the device is low on space. There is no cloud backup in this architecture, so songs may need to be imported again on that device if browser data is cleared.
-
-## Legacy Backend
-
-Do not deploy Render, Supabase, PostgreSQL, Cloudflare R2, or the Django backend for the current app. The `backend/` directory remains in the repo only as a temporary backup/reference and can be removed after the frontend-only version is confirmed.
