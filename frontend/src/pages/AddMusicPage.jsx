@@ -35,6 +35,10 @@ const tabs = [
   { id: 'storage', label: 'Storage', icon: Database },
 ]
 
+function titleFromFilename(file) {
+  return file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
 export default function AddMusicPage() {
   const [activeTab, setActiveTab] = useState('import')
   const [songs, setSongs] = useState([])
@@ -93,13 +97,23 @@ export default function AddMusicPage() {
     setMessage('')
   }
 
+  function chooseSongFiles(files) {
+    setSongFiles(files)
+    setError('')
+    setMessage('')
+    if (files.length === 1) {
+      setSongForm({
+        title: titleFromFilename(files[0]),
+        artist_name: 'Unknown Artist',
+      })
+    } else {
+      setSongForm(emptySongForm)
+    }
+  }
+
   async function importSelectedSongs(event) {
     event.preventDefault()
     if (!songFiles.length) return
-    if (songFiles.length === 1 && (!songForm.title.trim() || !songForm.artist_name.trim())) {
-      setError('Song title and artist are required for single-song import.')
-      return
-    }
     setBusy(true)
     setError('')
     try {
@@ -223,7 +237,7 @@ export default function AddMusicPage() {
               label="Choose audio files"
               files={songFiles}
               multiple
-              onChange={(files) => setSongFiles(files)}
+              onChange={chooseSongFiles}
             />
             {songFiles.length <= 1 && <SongMetadataFields form={songForm} setForm={setSongForm} />}
             {songFiles.length > 1 && (
@@ -377,6 +391,9 @@ function FilePicker({ label, files = [], optional = false, multiple = false, onC
         type="file"
         accept=".mp3,.m4a,.aac,.wav,audio/*"
         multiple={multiple}
+        onClick={(event) => {
+          event.currentTarget.value = ''
+        }}
         onChange={(event) => onChange?.(Array.from(event.target.files || []))}
       />
       <span className="file-picker__icon"><FileAudio size={22} /></span>
@@ -397,11 +414,11 @@ function SongMetadataFields({ form, setForm }) {
     <div className="metadata-fields">
       <label>
         Title
-        <input value={form.title || ''} onChange={(event) => update('title', event.target.value)} placeholder="Song title" required />
+        <input value={form.title || ''} onChange={(event) => update('title', event.target.value)} placeholder="Song title" />
       </label>
       <label>
         Artist
-        <input value={form.artist_name || ''} onChange={(event) => update('artist_name', event.target.value)} placeholder="Artist" required />
+        <input value={form.artist_name || ''} onChange={(event) => update('artist_name', event.target.value)} placeholder="Artist" />
       </label>
     </div>
   )
