@@ -28,7 +28,8 @@ Target:
 ## Production Readiness Notes
 
 - Render free services can sleep when inactive, so the first request after inactivity may be slow.
-- Render local filesystem is not durable for uploads, so production audio must use R2.
+- Render local filesystem is not durable for uploads, so production audio should use R2.
+- If R2 is not configured, the app can serve uploaded media from Render's local filesystem as a demo fallback, but uploads can disappear after redeploys/restarts.
 - Supabase free tier limits storage/compute and may pause or restrict usage depending on current plan rules.
 - R2 audio must be reachable by the browser over HTTPS. Use an R2 public/custom domain and configure CORS.
 - iPhone PWA install works through Safari: Share -> Add to Home Screen.
